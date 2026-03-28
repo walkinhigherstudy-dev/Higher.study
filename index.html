@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta http-equiv="cache-control" content="no-cache"/>
+<title>Referral Analytics Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#07080f;--bg2:#0d0e1c;
+  --card:rgba(255,255,255,.04);--card2:rgba(255,255,255,.07);
+  --brd:rgba(255,255,255,.07);--brd2:rgba(255,255,255,.14);
+  --green:#10b981;
+  --font:'Plus Jakarta Sans',-apple-system,sans-serif;
+  --shadow:0 8px 32px rgba(0,0,0,.45);
+  --r:14px;--rs:8px;
+}
+html{scroll-behavior:smooth;}
+body{
+  font-family:var(--font);background:var(--bg);color:#fff;
+  min-height:100vh;-webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -10%,rgba(99,72,255,.28) 0%,transparent 62%),
+    radial-gradient(ellipse 50% 40% at 100% 100%,rgba(6,182,212,.06) 0%,transparent 55%),
+    radial-gradient(ellipse 40% 30% at 0% 80%,rgba(139,92,246,.05) 0%,transparent 50%);
+  transform:translateZ(0);
+}
+
+/* ── LOADER BAR ─────────────────────────────────────────── */
+.lbar{position:fixed;top:0;left:0;right:0;height:3px;z-index:9999;
+  background:linear-gradient(90deg,#e8512a,#818cf8,#06d6a0);
+  transform:scaleX(0);transform-origin:left;transition:transform .4s ease;}
+.lbar.on{transform:scaleX(.7);}
+.lbar.done{transform:scaleX(1);opacity:0;transition:transform .3s,opacity .4s .2s;}
+
+/* ── LAYOUT ─────────────────────────────────────────────── */
+#app{position:relative;z-index:1;min-height:100vh;}
+.wrap{max-width:1200px;margin:0 auto;padding:18px 20px 48px;}
+
+/* ── TOPBAR ─────────────────────────────────────────────── */
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand-ico{width:44px;height:44px;border-radius:12px;flex-shrink:0;overflow:hidden;}
+.brand-ico img{width:44px;height:44px;border-radius:12px;object-fit:cover;display:block;}
+.brand-title{font-size:clamp(14px,1.8vw,20px);font-weight:800;letter-spacing:-.025em;line-height:1.2;}
+.brand-sub{font-size:10px;font-weight:600;color:rgba(255,255,255,.28);letter-spacing:.07em;margin-top:2px;}
+.top-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+
+.live-wrap{display:flex;align-items:center;gap:6px;}
+.live-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.live-dot.dot-live{background:#10b981;box-shadow:0 0 6px rgba(16,185,129,.6);animation:pulse 2s infinite;}
+.live-dot.dot-loading{background:#818cf8;box-shadow:0 0 6px rgba(129,140,248,.6);animation:fetchPulse .8s infinite;}
+.live-dot.dot-error{background:#f87171;box-shadow:0 0 6px rgba(248,113,113,.5);}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.75)}}
+@keyframes fetchPulse{0%,100%{opacity:1}50%{opacity:.5;transform:scale(1.3)}}
+.live-txt{font-size:11px;font-weight:600;color:rgba(255,255,255,.22);letter-spacing:.03em;}
+
+.refresh-btn{display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:10px;border:1px solid var(--brd);background:var(--card2);cursor:pointer;font-size:12px;font-weight:700;color:rgba(255,255,255,.5);font-family:var(--font);transition:all .12s;white-space:nowrap;}
+.refresh-btn:hover{background:rgba(255,255,255,.1);color:#fff;}
+.refresh-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
+
+/* ── BANNER ─────────────────────────────────────────────── */
+.cbanner{background:rgba(232,81,42,.08);border:1px solid rgba(232,81,42,.22);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;font-size:11px;font-weight:700;color:#f87c5e;display:none;align-items:center;gap:8px;flex-wrap:wrap;}
+.cbanner.show{display:flex;}
+.cbanner-btn{padding:3px 10px;border-radius:6px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;cursor:pointer;font-size:10px;font-weight:700;font-family:var(--font);}
+.cbanner-btn:hover{background:rgba(255,255,255,.18);}
+
+/* ── FILTER BAR ─────────────────────────────────────────── */
+.filter-bar{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+  background:#0d1117;
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:16px;padding:16px 20px;margin-bottom:16px;
+  box-shadow:0 4px 20px rgba(0,0,0,.4);
+}
+.fgrp{display:flex;flex-direction:column;min-width:130px;flex:1;}
+.fgrp label{
+  font-size:10px;font-weight:800;
+  color:rgba(255,255,255,.45);
+  letter-spacing:.12em;text-transform:uppercase;
+  margin-bottom:7px;
+}
+.fgrp select,.fgrp input{
+  padding:10px 14px;
+  border-radius:10px;
+  background:#161d30;
+  border:1.5px solid rgba(255,255,255,.1);
+  color:#fff;font-family:var(--font);
+  font-size:13px;font-weight:700;
+  outline:none;
+  transition:border-color .18s,background .18s;
+  -webkit-appearance:none;appearance:none;
+  cursor:pointer;
+}
+.fgrp select:focus,.fgrp input:focus{
+  border-color:rgba(99,102,241,.6);
+  background:#1c2540;
+  box-shadow:0 0 0 3px rgba(99,102,241,.15);
+}
+.fgrp select:hover,.fgrp input:hover{
+  border-color:rgba(255,255,255,.22);
+  background:#1a2238;
+}
+.fgrp input[type="date"]{color:rgba(255,255,255,.6);}
+.fgrp input[type="date"]::-webkit-calendar-picker-indicator{
+  filter:invert(.6);cursor:pointer;opacity:.7;
+}
+.fgrp input[type="date"]:not(:placeholder-shown){color:#fff;}
+.fgrp select option{background:#161d30;color:#fff;font-size:13px;font-weight:700;}
+.fgrp select option:checked{background:#2d3a60;}
+
+.filter-actions{display:flex;gap:8px;flex-shrink:0;align-items:flex-end;}
+.btn-apply{
+  padding:10px 22px;border-radius:10px;
+  background:linear-gradient(135deg,#4f46e5,#7c3aed);
+  border:none;color:#fff;font-family:var(--font);
+  font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;
+  box-shadow:0 4px 14px rgba(99,102,241,.4);
+  transition:all .18s;
+}
+.btn-apply:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(99,102,241,.5);opacity:.92;}
+.btn-apply:active{transform:translateY(0);}
+.btn-reset{
+  padding:10px 18px;border-radius:10px;
+  background:#161d30;border:1.5px solid rgba(255,255,255,.1);
+  color:rgba(255,255,255,.5);font-family:var(--font);
+  font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;
+  transition:all .18s;
+}
+.btn-reset:hover{border-color:rgba(248,113,113,.5);color:#f87171;background:#1c1020;}
+
+/* ── SECTION LABEL ──────────────────────────────────────── */
+.section-label{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.22);margin-bottom:10px;margin-top:2px;display:flex;align-items:center;gap:8px;}
+.section-label::after{content:'';flex:1;height:1px;background:var(--brd);}
+
+/* ── KPI ROW ────────────────────────────────────────────── */
+.kpi-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;}
+.kpi-card{
+  display:flex;align-items:center;gap:16px;
+  background:linear-gradient(145deg,#0f1520,#0d1117);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:20px;padding:18px 22px;
+  transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;
+  flex:1;min-width:155px;position:relative;overflow:hidden;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);
+}
+.kpi-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:var(--kc,linear-gradient(90deg,#4338ca,#818cf8));
+}
+/* Glow blob behind icon */
+.kpi-card::after{
+  content:'';position:absolute;
+  top:-30px;left:-20px;width:120px;height:120px;
+  border-radius:50%;
+  background:var(--kc,linear-gradient(90deg,#4338ca,#818cf8));
+  opacity:.07;filter:blur(28px);
+  pointer-events:none;
+}
+.kpi-card:hover{
+  transform:translateY(-3px);
+  box-shadow:0 16px 48px rgba(0,0,0,.6);
+  border-color:rgba(255,255,255,.15);
+}
+
+/* Icon circle */
+.kpi-ico-wrap{
+  width:46px;height:46px;border-radius:14px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--kc,linear-gradient(135deg,#4338ca,#818cf8));
+  opacity:.9;font-size:22px;
+  box-shadow:0 4px 14px rgba(0,0,0,.4);
+  position:relative;z-index:1;
+}
+.kpi-body{display:flex;flex-direction:column;gap:3px;position:relative;z-index:1;}
+.kpi-lbl{
+  font-size:10px;font-weight:800;
+  color:rgba(255,255,255,.45);
+  letter-spacing:.12em;text-transform:uppercase;
+}
+.kpi-val{
+  font-size:32px;font-weight:900;
+  letter-spacing:-.04em;line-height:1;
+  font-variant-numeric:tabular-nums;
+}
+.kpi-sub{font-size:11px;font-weight:700;color:rgba(255,255,255,.3);margin-top:2px;}
+
+/* ── LEADERBOARD ────────────────────────────────────────── */
+.inc-section{
+  border-radius:20px;margin-top:4px;
+  background:linear-gradient(160deg,#0d1117 0%,#0f1623 100%);
+  border:1px solid rgba(255,255,255,.09);
+  padding:22px 24px 18px;position:relative;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+.inc-section::before{
+  content:'';position:absolute;top:-60px;right:-60px;
+  width:220px;height:220px;border-radius:50%;
+  background:radial-gradient(circle,rgba(16,185,129,.07),transparent 65%);
+  pointer-events:none;
+}
+
+/* Head */
+.inc-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;position:relative;z-index:1;flex-wrap:wrap;gap:10px;}
+.inc-head-title{font-size:14px;font-weight:900;color:#fff;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;}
+.inc-head-sub{font-size:10px;font-weight:600;color:rgba(255,255,255,.28);margin-top:3px;}
+.inc-total-pill{
+  background:rgba(16,185,129,.12);border:2px solid rgba(16,185,129,.5);
+  border-radius:30px;padding:7px 20px;
+  font-size:17px;font-weight:900;color:#10b981;
+  box-shadow:0 0 20px rgba(16,185,129,.18);
+  white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:-.01em;
+}
+
+/* Sort controls */
+.inc-controls{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:8px;flex-wrap:wrap;position:relative;z-index:1;}
+.inc-sort-group{
+  display:flex;align-items:center;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:30px;padding:3px;gap:2px;
+}
+.inc-sort-lbl{
+  font-size:9px;font-weight:800;color:rgba(255,255,255,.28);
+  letter-spacing:.1em;text-transform:uppercase;
+  padding:0 10px 0 6px;white-space:nowrap;
+  border-right:1px solid rgba(255,255,255,.08);margin-right:2px;
+}
+.inc-sort-btn{
+  padding:5px 14px;border-radius:30px;
+  font-size:11px;font-weight:800;cursor:pointer;
+  border:none;background:transparent;
+  color:rgba(255,255,255,.32);font-family:var(--font);
+  transition:all .15s;white-space:nowrap;
+}
+.inc-sort-btn:hover{color:rgba(255,255,255,.75);background:rgba(255,255,255,.07);}
+.inc-sort-btn.active{
+  background:linear-gradient(135deg,#4f46e5,#7c3aed);
+  color:#fff;font-weight:900;
+  box-shadow:0 3px 12px rgba(99,102,241,.4);
+}
+.inc-search{
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
+  border-radius:20px;padding:6px 14px;
+  color:#fff;font-family:var(--font);font-size:11px;font-weight:700;
+  outline:none;width:150px;transition:border-color .15s;
+}
+.inc-search:focus{border-color:rgba(255,255,255,.3);}
+.inc-search::placeholder{color:rgba(255,255,255,.2);}
+
+/* Chart list */
+.inc-chart{display:flex;flex-direction:column;gap:10px;position:relative;z-index:1;transition:opacity .18s;}
+.inc-chart.sorting{opacity:.25;}
+
+/* Each row: avatar-col | name-col | bar | right-stats */
+.inc-row{display:grid;grid-template-columns:48px 150px 1fr 88px;align-items:center;gap:12px;}
+
+/* Avatar */
+.inc-avatar{
+  width:44px;height:44px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:900;color:#fff;
+  position:relative;
+  box-shadow:0 4px 12px rgba(0,0,0,.4);
+}
+.inc-avatar-rank{
+  position:absolute;bottom:-3px;right:-3px;
+  width:17px;height:17px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:8px;font-weight:900;line-height:1;
+  border:2px solid #0f1623;
+}
+.inc-avatar-rank.r1{background:linear-gradient(135deg,#f5c542,#f59e0b);color:#1a1000;}
+.inc-avatar-rank.r2{background:linear-gradient(135deg,#9db4c8,#b0bcd0);color:#0d1520;}
+.inc-avatar-rank.r3{background:linear-gradient(135deg,#c4703a,#d4884e);color:#fff;}
+.inc-avatar-rank.rn{background:#1e2840;color:rgba(255,255,255,.5);font-size:7px;}
+
+/* Name column */
+.inc-name{min-width:0;}
+.inc-name-main{font-size:13px;font-weight:800;color:#fff;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-.015em;}
+.inc-name-adm{font-size:10px;font-weight:600;color:rgba(255,255,255,.3);display:block;margin-top:2px;}
+
+/* ── BAR ── */
+.inc-track-wrap{position:relative;height:54px;}
+.inc-track{
+  width:100%;height:100%;
+  background:rgba(255,255,255,.05);
+  border-radius:30px;overflow:hidden;position:relative;
+  border:1px solid rgba(255,255,255,.06);
+}
+.inc-bar{
+  position:absolute;top:0;left:0;height:100%;
+  width:0%;
+  border-radius:30px;
+  transition:width 1.4s cubic-bezier(.16,1,.3,1);
+}
+.inc-overlay{
+  position:absolute;inset:0;
+  display:flex;align-items:center;
+  padding:0 14px;gap:10px;
+  pointer-events:none;z-index:10;
+}
+.inc-ol-adm{
+  font-size:12px;font-weight:900;color:#fff;
+  background:rgba(0,0,0,.55);
+  border:1.5px solid rgba(255,255,255,.25);
+  border-radius:20px;padding:4px 13px;
+  white-space:nowrap;flex-shrink:0;letter-spacing:.01em;
+}
+.inc-ol-amt{
+  font-size:16px;font-weight:900;color:#fff;
+  white-space:nowrap;flex-shrink:0;
+  text-shadow:0 2px 8px rgba(0,0,0,.9);
+  letter-spacing:-.02em;
+}
+
+/* Right stats */
+.inc-stats{text-align:right;flex-shrink:0;}
+.inc-stat-amt{font-size:13px;font-weight:900;display:block;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+.inc-stat-adm{font-size:10px;font-weight:700;color:rgba(255,255,255,.3);display:block;margin-top:3px;}
+
+/* Footer */
+.inc-footer{display:flex;justify-content:space-between;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);position:relative;z-index:1;}
+.inc-footer-label{font-size:10px;font-weight:700;color:rgba(255,255,255,.25);text-transform:uppercase;letter-spacing:.08em;}
+.inc-footer-total{font-size:16px;font-weight:900;color:#fde047;font-variant-numeric:tabular-nums;}
+
+/* ── PAGINATION/* ── PAGINATION ─────────────────────────────────────────── */
+.pag{display:flex;align-items:center;justify-content:flex-end;gap:5px;padding:12px 0 0;}
+.pbtn{width:28px;height:28px;border-radius:7px;background:var(--card2);border:1px solid var(--brd);color:rgba(255,255,255,.4);font-family:var(--font);font-size:11px;font-weight:700;cursor:pointer;transition:all .12s;display:flex;align-items:center;justify-content:center;}
+.pbtn:hover,.pbtn.active{background:rgba(99,102,241,.3);border-color:rgba(99,102,241,.5);color:#a5b4fc;}
+.pinfo{font-size:10px;font-weight:600;color:rgba(255,255,255,.22);margin-right:4px;}
+
+/* ── MISC ───────────────────────────────────────────────── */
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 16px;border-radius:10px;background:#0d0e1c;border:1px solid var(--brd2);color:#fff;font-size:12px;font-weight:700;transform:translateY(60px);opacity:0;transition:all .25s;z-index:9998;box-shadow:var(--shadow);}
+.toast.show{transform:translateY(0);opacity:1;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .7s linear infinite;}
+.empty{text-align:center;padding:48px 20px;color:rgba(255,255,255,.2);font-size:12px;font-weight:600;}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:10px;}
+
+@media(max-width:900px){
+  .inc-row{grid-template-columns:44px 130px 1fr 80px;gap:10px;}
+}
+@media(max-width:700px){
+  .filter-bar{flex-direction:column;}.fgrp{min-width:100%;}
+  .kpi-row{gap:6px;}.kpi-card{min-width:calc(50% - 4px);flex:none;}
+  .inc-row{grid-template-columns:40px 110px 1fr 72px;gap:8px;}
+  .inc-name-main{font-size:12px;}
+}
+@media(max-width:520px){
+  .kpi-card{min-width:100%;}
+  .inc-row{grid-template-columns:40px 100px 1fr;gap:8px;}
+  .inc-stats{display:none;}
+}
+  .inc-row{grid-template-columns:40px 90px 1fr;gap:8px;}
+  .inc-stats{display:none;}
+  .inc-ol-amt{font-size:13px;}
+}
+</style>
+</head>
+<body>
+<div class="lbar" id="lb"></div>
+<div class="toast" id="toast"></div>
+
+<div id="app">
+<div class="wrap">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-ico">
+        <img src="data:image/png;base64,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" alt="logo" style="width:44px;height:44px;border-radius:12px;object-fit:cover;"/>
+      </div>
+      <div>
+        <div class="brand-title">Referral Analytics</div>
+        <div class="brand-sub">EMPLOYEE REFERRAL DASHBOARD</div>
+      </div>
+    </div>
+    <div class="top-r">
+      <div class="live-wrap">
+        <div class="live-dot dot-loading" id="liveDot"></div>
+        <span class="live-txt" id="liveText">Connecting…</span>
+      </div>
+      <button class="refresh-btn" onclick="applyFilters()">
+        <svg id="refreshIco" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- BANNER -->
+  <div class="cbanner" id="cbanner">
+    <span id="cbannerMsg">⚠ Could not load live data</span>
+    <button class="cbanner-btn" onclick="runDebug()">🔍 Diagnose</button>
+    <button class="cbanner-btn" onclick="window.open(API_URL+'?action=debug','_blank')">🌐 Open API</button>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filter-bar">
+    <div class="fgrp"><label>Employee</label><select id="fManager"><option value="">All Employees</option></select></div>
+    <div class="fgrp"><label>Position / Process</label><select id="fProcess"><option value="">All Positions</option></select></div>
+    <div class="fgrp"><label>Status</label>
+      <select id="fStatus">
+        <option value="">All Statuses</option>
+        <option value="Selected">Selected</option>
+        <option value="On Hold">On Hold</option>
+        <option value="Not Selected">Not Selected</option>
+      </select>
+    </div>
+    <div class="fgrp"><label>Date From</label><input type="date" id="fDateFrom"/></div>
+    <div class="fgrp"><label>Date To</label><input type="date" id="fDateTo"/></div>
+    <div class="filter-actions">
+      <button class="btn-apply" onclick="applyFilters()">Apply</button>
+      <button class="btn-reset"  onclick="resetFilters()">Reset</button>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="section-label">Key Metrics</div>
+  <div class="kpi-row">
+
+    <div class="kpi-card" style="--kc:linear-gradient(135deg,#3730a3,#818cf8)">
+      <div class="kpi-ico-wrap">👥</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Referrals</div>
+        <div class="kpi-val" id="kTotal" style="background:linear-gradient(135deg,#a5b4fc,#c7d2fe);-webkit-background-clip:text;-webkit-text-fill-color:transparent">—</div>
+        <div class="kpi-sub">All candidates</div>
+      </div>
+    </div>
+
+    <div class="kpi-card" style="--kc:linear-gradient(135deg,#065f46,#10b981)">
+      <div class="kpi-ico-wrap">✅</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Selected</div>
+        <div class="kpi-val" id="kJoined" style="background:linear-gradient(135deg,#34d399,#6ee7b7);-webkit-background-clip:text;-webkit-text-fill-color:transparent">—</div>
+        <div class="kpi-sub" id="kJoinedPct">—</div>
+      </div>
+    </div>
+
+    <div class="kpi-card" style="--kc:linear-gradient(135deg,#92400e,#fbbf24)">
+      <div class="kpi-ico-wrap">⏸</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">On Hold</div>
+        <div class="kpi-val" id="kPending" style="background:linear-gradient(135deg,#f59e0b,#fde68a);-webkit-background-clip:text;-webkit-text-fill-color:transparent">—</div>
+        <div class="kpi-sub" id="kPendingPct">—</div>
+      </div>
+    </div>
+
+    <div class="kpi-card" style="--kc:linear-gradient(135deg,#881337,#fb7185)">
+      <div class="kpi-ico-wrap">❌</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Not Selected</div>
+        <div class="kpi-val" id="kRejected" style="background:linear-gradient(135deg,#f43f5e,#fda4af);-webkit-background-clip:text;-webkit-text-fill-color:transparent">—</div>
+        <div class="kpi-sub" id="kRejectedPct">—</div>
+      </div>
+    </div>
+
+    <div class="kpi-card" style="--kc:linear-gradient(135deg,#064e3b,#34d399)">
+      <div class="kpi-ico-wrap">💰</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Earnings</div>
+        <div class="kpi-val" id="kEarnings" style="background:linear-gradient(135deg,#10b981,#6ee7b7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:24px">—</div>
+        <div class="kpi-sub" id="kEarnSub">—</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- LEADERBOARD -->
+  <div class="section-label">Referral Incentive Leaderboard</div>
+  <div class="inc-section">
+    <div class="inc-head">
+      <div>
+        <div class="inc-head-title">💰 Referral Incentive Leaderboard</div>
+        <div class="inc-head-sub" id="earnRateNote">From "Refferal Amount" column · sorted highest first</div>
+      </div>
+      <div class="inc-total-pill" id="lbTotal">₹0</div>
+    </div>
+    <div class="inc-controls">
+      <div class="inc-sort-group">
+        <span class="inc-sort-lbl">SORT</span>
+        <button class="inc-sort-btn active" id="sHigh"  onclick="sortE('high')">↓ Incentive</button>
+        <button class="inc-sort-btn"        id="sLow"   onclick="sortE('low')">↑ Incentive</button>
+        <button class="inc-sort-btn"        id="sSel"   onclick="sortE('sel')">↓ Referrals</button>
+        <button class="inc-sort-btn"        id="sSelA"  onclick="sortE('sela')">↑ Referrals</button>
+      </div>
+      <input class="inc-search" type="text" id="earnSearch" placeholder="Search employee…" oninput="filterE(this.value)"/>
+    </div>
+    <div class="inc-chart" id="lbList"></div>
+    <div class="inc-footer">
+      <span class="inc-footer-label" id="lbFootLabel">0 employees</span>
+      <span class="inc-footer-total" id="lbFootTotal">₹0</span>
+    </div>
+    <div class="pag" id="earnPag"></div>
+  </div>
+
+</div><!-- /wrap -->
+</div><!-- /app -->
+
+<script>
+// ══════════════════════════════════════════════════════════
+//  CONFIG  — live API URL
+// ══════════════════════════════════════════════════════════
+const API_URL = "https://script.google.com/macros/s/AKfycbyY6rKxmmuBRoBGNEwB1TUw3rUZRHXL2-mTVekuZtlsEGPZyUM656-ifGa3BiERUjiq/exec";
+const CURR    = "₹";
+const EPS     = 15;   // rows per page in leaderboard
+
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+let allRows = [], earnData = [], epg = 1, esort = 'high', esq = '';
+
+// ══════════════════════════════════════════════════════════
+//  BOOT — run once page is ready
+// ══════════════════════════════════════════════════════════
+(function boot(){
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    setTimeout(init, 50);
+  }
+})();
+
+// ══════════════════════════════════════════════════════════
+//  LOADER + LIVE DOT
+// ══════════════════════════════════════════════════════════
+function showL(){ document.getElementById('lb').className='lbar on'; setLive('loading','Loading…'); }
+function hideL(){ const b=document.getElementById('lb'); b.className='lbar done'; setTimeout(()=>b.className='lbar',700); }
+function setLive(state, text){
+  document.getElementById('liveDot').className = 'live-dot dot-'+state;
+  document.getElementById('liveText').textContent = text;
+}
+function showToast(msg, dur=3000){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), dur);
+}
+
+// ══════════════════════════════════════════════════════════
+//  JSONP — only method that works for local HTML + Apps Script
+// ══════════════════════════════════════════════════════════
+let _ci = 0;
+function jsonp(url, timeoutMs = 20000){
+  return new Promise((resolve, reject) => {
+    const cb  = '__cb_' + (++_ci);
+    const tag = document.createElement('script');
+    const tid = setTimeout(() => {
+      cleanup();
+      reject(new Error('Request timed out — check Apps Script deployment'));
+    }, timeoutMs);
+    window[cb] = data => { cleanup(); resolve(data); };
+    function cleanup(){
+      clearTimeout(tid);
+      delete window[cb];
+      if(tag.parentNode) tag.parentNode.removeChild(tag);
+    }
+    tag.onerror = () => { cleanup(); reject(new Error('Failed to load script — check URL')); };
+    const sep = url.includes('?') ? '&' : '?';
+    tag.src = url + sep + 'callback=' + cb;
+    document.head.appendChild(tag);
+  });
+}
+
+function buildQS(params){
+  const clean = Object.fromEntries(Object.entries(params).filter(([,v]) => v !== ''));
+  const s = new URLSearchParams(clean).toString();
+  return s ? '&' + s : '';
+}
+
+const apiMeta  = ()  => jsonp(API_URL + '?action=getMeta');
+const apiStats = (p) => jsonp(API_URL + '?action=getStats'  + buildQS(p));
+const apiData  = (p) => jsonp(API_URL + '?action=getData'   + buildQS({...p, limit:'500'}));
+
+function getFilters(){
+  return {
+    manager:  document.getElementById('fManager').value  || '',
+    process:  document.getElementById('fProcess').value  || '',
+    status:   document.getElementById('fStatus').value   || '',
+    dateFrom: document.getElementById('fDateFrom').value || '',
+    dateTo:   document.getElementById('fDateTo').value   || '',
+  };
+}
+
+// ══════════════════════════════════════════════════════════
+//  INIT — load everything fresh
+// ══════════════════════════════════════════════════════════
+async function init(){
+  showL();
+  try {
+    const [meta, stats, dr] = await Promise.all([apiMeta(), apiStats({}), apiData({})]);
+
+    // Surface any server-side errors
+    if(meta.error) throw new Error('getMeta: ' + meta.error);
+    if(stats.error) throw new Error('getStats: ' + stats.error);
+    if(dr.error)   throw new Error('getData: '  + dr.error);
+
+    allRows = dr.data || [];
+    epg = 1;
+    // Build filters from meta AND from actual row data (fallback)
+    const empSet = new Set((meta.employees||[]));
+    const posSet = new Set((meta.positions||[]));
+    allRows.forEach(r => {
+      if(r['Employee Name'] && r['Employee Name'].trim()) empSet.add(r['Employee Name'].trim());
+      if(r['Position Referred For'] && r['Position Referred For'].trim()) posSet.add(r['Position Referred For'].trim());
+    });
+    populateFilters({ employees:[...empSet].sort(), positions:[...posSet].sort() });
+    renderKPIs(stats);
+    computeEarnings(allRows);
+
+    hideL();
+    setLive('live', `Live · ${allRows.length} records`);
+    document.getElementById('cbanner').classList.remove('show');
+    showToast(`✓ ${allRows.length} referrals loaded from sheet`);
+
+  } catch(err) {
+    hideL();
+    console.error('[Dashboard] init error:', err);
+    setLive('error', 'Demo mode');
+    document.getElementById('cbannerMsg').textContent = '⚠ ' + err.message;
+    document.getElementById('cbanner').classList.add('show');
+    showToast('⚠ ' + err.message, 6000);
+    loadDemo();
+  }
+}
+
+async function applyFilters(){
+  showL();
+  const ico = document.getElementById('refreshIco');
+  ico.classList.add('spin');
+  setTimeout(() => ico.classList.remove('spin'), 900);
+  const f = getFilters();
+  try {
+    const [stats, dr] = await Promise.all([apiStats(f), apiData(f)]);
+    if(stats.error || dr.error) throw new Error(stats.error || dr.error);
+    allRows = dr.data || [];
+    epg = 1;
+    // Rebuild filter lists from live row data
+    const empSet2 = new Set();
+    const posSet2 = new Set();
+    allRows.forEach(r => {
+      if(r['Employee Name'] && r['Employee Name'].trim()) empSet2.add(r['Employee Name'].trim());
+      if(r['Position Referred For'] && r['Position Referred For'].trim()) posSet2.add(r['Position Referred For'].trim());
+    });
+    populateFilters({ employees:[...empSet2].sort(), positions:[...posSet2].sort() });
+    renderKPIs(stats);
+    computeEarnings(allRows);
+    hideL();
+    setLive('live', `Live · ${allRows.length} records`);
+    showToast('Filters applied');
+  } catch(err) {
+    hideL();
+    console.error('[Dashboard] filter error:', err);
+    demofilt();
+    showToast('⚠ ' + err.message, 4000);
+  }
+}
+
+function resetFilters(){
+  ['fManager','fProcess','fStatus'].forEach(id => document.getElementById(id).value = '');
+  ['fDateFrom','fDateTo'].forEach(id => document.getElementById(id).value = '');
+  epg = 1;
+  init();
+}
+
+// ══════════════════════════════════════════════════════════
+//  POPULATE FILTER DROPDOWNS
+// ══════════════════════════════════════════════════════════
+function populateFilters(meta){
+  const mgr = document.getElementById('fManager');
+  const pos = document.getElementById('fProcess');
+  mgr.innerHTML = '<option value="">All Employees</option>';
+  pos.innerHTML = '<option value="">All Positions</option>';
+  (meta.employees || []).forEach(e => mgr.innerHTML += `<option>${e}</option>`);
+  (meta.positions || []).forEach(v => pos.innerHTML += `<option>${v}</option>`);
+}
+
+// ══════════════════════════════════════════════════════════
+//  KPI RENDER
+// ══════════════════════════════════════════════════════════
+function renderKPIs(s){
+  const pct = n => s.total ? Math.round(n/s.total*100)+'%' : '0%';
+  const sel = s.selected || s.joined  || 0;
+  const oh  = s.onHold   || s.pending || 0;
+  const ns  = s.notSelected || s.rejected || 0;
+  document.getElementById('kTotal').textContent    = s.total;
+  document.getElementById('kJoined').textContent   = sel;
+  document.getElementById('kPending').textContent  = oh;
+  document.getElementById('kRejected').textContent = ns;
+  document.getElementById('kJoinedPct').textContent   = pct(sel) + ' of total';
+  document.getElementById('kPendingPct').textContent  = pct(oh)  + ' of total';
+  document.getElementById('kRejectedPct').textContent = pct(ns)  + ' of total';
+}
+
+// ══════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════
+const ACOLS = ['#4338ca','#0891b2','#6d28d9','#047857','#be185d','#b45309','#0369a1','#7c3aed'];
+function avatarColor(n){ let h=0; for(let i=0;i<n.length;i++) h=n.charCodeAt(i)+((h<<5)-h); return ACOLS[Math.abs(h)%ACOLS.length]; }
+function fmt(n){ return CURR + n.toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function fmtK(n){ if(n>=100000) return CURR+(n/100000).toFixed(1)+'L'; if(n>=1000) return CURR+(n/1000).toFixed(1)+'K'; return fmt(n); }
+
+const GRADS = [
+  'linear-gradient(90deg,#8c2e00,#d44f0a,#f07030,#f8b080)',  // 1 deep orange → light peach
+  'linear-gradient(90deg,#1a2e4a,#2a5080,#5090c0,#90c0e0)',  // 2 navy → pale blue
+  'linear-gradient(90deg,#5a3000,#9a6000,#c89000,#e8c050)',  // 3 dark brown → gold
+  'linear-gradient(90deg,#1e0870,#4820b0,#7858e0,#b090ff)',  // 4 deep violet → periwinkle
+  'linear-gradient(90deg,#003830,#007050,#00a878,#50d8a8)',  // 5 forest → mint
+  'linear-gradient(90deg,#6a0030,#b01858,#e04080,#f890c0)',  // 6 crimson → rose
+  'linear-gradient(90deg,#003850,#007090,#00a8c8,#60d8f0)',  // 7 deep teal → cyan
+  'linear-gradient(90deg,#5a0808,#a01010,#d83030,#f87070)',  // 8 dark red → salmon
+  'linear-gradient(90deg,#003818,#006830,#18a058,#60d090)',  // 9 dark green → lime
+  'linear-gradient(90deg,#380070,#6800c0,#a030f0,#d070ff)',  // 10 deep purple → violet
+  'linear-gradient(90deg,#004060,#007890,#00b0b8,#60e0e8)',  // 11 teal → aqua
+  'linear-gradient(90deg,#503800,#907000,#c8a800,#f0d860)',  // 12 dark amber → yellow
+];
+
+const GRADS_ACCENT = [
+  '#f07030','#5090c0','#c89000','#7858e0','#00a878',
+  '#e04080','#00a8c8','#d83030','#18a058','#a030f0',
+  '#00b0b8','#c8a800',
+];
+
+const AVATAR_COLORS = [
+  '#b83800','#2a1080','#047857','#be185d',
+  '#b45309','#065f46','#6d28d9','#0369a1',
+  '#9f1239','#4338ca','#0891b2','#7c3aed',
+];
+
+// ══════════════════════════════════════════════════════════
+//  EARNINGS COMPUTE
+// ══════════════════════════════════════════════════════════
+function computeEarnings(rows){
+  const map = {};
+  rows.forEach(r => {
+    const emp = (r['Employee Name'] || 'Unknown').trim();
+    if(!map[emp]) map[emp] = { name:emp, referrals:0, selections:0, earnings:0 };
+    map[emp].referrals++;
+
+    // Read "Refferal Amount" column directly
+    const raw = r['Refferal Amount'] || r['Referral Amount'] || r['Bonus Amount'] || '0';
+    const amt = parseFloat(String(raw).replace(/[^0-9.]/g,'')) || 0;
+    if(amt > 0) map[emp].earnings += amt;
+
+    if((r['Status'] || '').toLowerCase().trim() === 'selected') map[emp].selections++;
+  });
+
+  earnData = Object.values(map);
+  esq = '';
+  document.getElementById('earnSearch').value = '';
+
+  const totalEarn = earnData.reduce((s,e) => s+e.earnings, 0);
+  document.getElementById('kEarnings').textContent = fmt(totalEarn);
+  document.getElementById('kEarnSub').textContent  = `Across ${earnData.length} employee${earnData.length!==1?'s':''}`;
+
+  applyEarnSort();
+}
+
+// ══════════════════════════════════════════════════════════
+//  SORT / FILTER LEADERBOARD
+// ══════════════════════════════════════════════════════════
+function applyEarnSort(){
+  let data = [...earnData];
+  const q = esq.toLowerCase();
+  if(q) data = data.filter(e => e.name.toLowerCase().includes(q));
+  if(esort==='high')  data.sort((a,b) => b.earnings   - a.earnings);
+  else if(esort==='low')  data.sort((a,b) => a.earnings   - b.earnings);
+  else if(esort==='sel')  data.sort((a,b) => b.selections - a.selections);
+  else                    data.sort((a,b) => a.selections - b.selections);
+  epg = 1;
+  renderLB(data);
+}
+
+function sortE(mode){
+  esort = mode;
+  ['sHigh','sLow','sSel','sSelA'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) el.classList.remove('active');
+  });
+  const map = { high:'sHigh', low:'sLow', sel:'sSel', sela:'sSelA' };
+  if(map[mode]) document.getElementById(map[mode]).classList.add('active');
+  const chart = document.getElementById('lbList');
+  chart.classList.add('sorting');
+  setTimeout(() => { chart.classList.remove('sorting'); applyEarnSort(); }, 180);
+}
+
+function filterE(q){ esq = q; epg = 1; applyEarnSort(); }
+
+// ══════════════════════════════════════════════════════════
+//  RENDER LEADERBOARD
+// ══════════════════════════════════════════════════════════
+function renderLB(data){
+  const list   = document.getElementById('lbList');
+  // maxE based on ALL earnData so bars are always proportional to global max
+  const allEarnings = earnData.map(e => e.earnings).filter(v => v > 0);
+  const maxE = allEarnings.length ? Math.max(...allEarnings) : 1;
+  const tE     = data.reduce((s,e) => s+e.earnings, 0);
+  const tS     = data.reduce((s,e) => s+e.selections, 0);
+
+  document.getElementById('lbTotal').textContent      = fmtK(tE);
+  document.getElementById('lbFootLabel').textContent  = `${data.length} employee${data.length!==1?'s':''} · ${tS} selected`;
+  document.getElementById('lbFootTotal').textContent  = fmt(tE);
+
+  if(!data.length){
+    list.innerHTML = '<div class="empty">No employees found</div>';
+    document.getElementById('earnPag').innerHTML = '';
+    return;
+  }
+
+  const start = (epg-1)*EPS;
+  const slice = data.slice(start, start+EPS);
+
+  list.innerHTML = slice.map((e, i) => {
+    const rank     = start + i + 1;
+    const rcls     = rank===1?'r1': rank===2?'r2': rank===3?'r3':'rn';
+    const grad     = GRADS[Math.min(rank-1, GRADS.length-1)];
+    const accent   = GRADS_ACCENT[Math.min(rank-1, GRADS_ACCENT.length-1)];
+    const ratio    = maxE > 0 ? e.earnings / maxE : 0;
+    const barW     = e.earnings > 0 ? Math.max(Math.round(ratio*100), 5) : 0;
+    const initials = e.name.trim().split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+    const avatarBg = AVATAR_COLORS[Math.abs(
+      e.name.split('').reduce((h,c)=>c.charCodeAt(0)+((h<<5)-h),0)
+    ) % AVATAR_COLORS.length];
+    const rankNum  = rank===1?'🥇': rank===2?'🥈': rank===3?'🥉': rank;
+
+    return `
+    <div class="inc-row" style="animation:fadeUp .35s ${i*.07}s ease both">
+
+      <div class="inc-avatar" style="background:${avatarBg}">
+        ${initials}
+        <span class="inc-avatar-rank ${rcls}">${rankNum}</span>
+      </div>
+
+      <div class="inc-name">
+        <span class="inc-name-main">${e.name}</span>
+        <span class="inc-name-adm">${e.referrals} referred</span>
+      </div>
+
+      <div class="inc-track-wrap">
+        <div class="inc-track">
+          <div class="inc-bar" style="background:${grad};width:0%" data-pct="${barW}"></div>
+          <div class="inc-overlay">
+            <span class="inc-ol-adm">${e.selections} sel</span>
+            ${e.earnings > 0 ? `<span class="inc-ol-amt">${fmt(e.earnings)}</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="inc-stats">
+        <span class="inc-stat-amt" style="color:${accent}">${e.earnings>0 ? fmt(e.earnings) : '—'}</span>
+        <span class="inc-stat-adm">${e.selections} sel</span>
+      </div>
+
+    </div>`;
+  }).join('');
+
+  // Animate bars — double rAF + setTimeout ensures paint is done
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        list.querySelectorAll('.inc-bar').forEach(bar => {
+          bar.style.width = (parseFloat(bar.dataset.pct) || 0) + '%';
+        });
+      }, 30);
+    });
+  });
+
+  // Pagination
+  const pages = Math.ceil(data.length / EPS);
+  const wrap  = document.getElementById('earnPag');
+  if(pages <= 1){ wrap.innerHTML = ''; return; }
+  let h = `<span class="pinfo">${start+1}–${Math.min(epg*EPS, data.length)} of ${data.length}</span>`;
+  if(epg > 1) h += `<button class="pbtn" onclick="gepg(${epg-1})">‹</button>`;
+  const s2 = Math.max(1, epg-2), en = Math.min(pages, epg+2);
+  for(let p=s2; p<=en; p++) h += `<button class="pbtn ${p===epg?'active':''}" onclick="gepg(${p})">${p}</button>`;
+  if(epg < pages) h += `<button class="pbtn" onclick="gepg(${epg+1})">›</button>`;
+  wrap.innerHTML = h;
+}
+function gepg(p){ epg = p; applyEarnSort(); }
+
+// ══════════════════════════════════════════════════════════
+//  EXPORT
+// ══════════════════════════════════════════════════════════
+function exportData(){
+  if(!allRows.length){ showToast('No data to export'); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allRows), 'All Referrals');
+  const es = earnData.map(e => ({
+    'Employee': e.name,
+    'Referrals': e.referrals,
+    'Selected': e.selections,
+    [`Earnings (${CURR})`]: e.earnings
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(es), 'Earnings');
+  XLSX.writeFile(wb, 'Referral_Report_' + new Date().toISOString().split('T')[0] + '.xlsx');
+  showToast('Exported ✓');
+}
+
+// ══════════════════════════════════════════════════════════
+//  DEBUG
+// ══════════════════════════════════════════════════════════
+async function runDebug(){
+  showToast('Running diagnostic…', 3000);
+  try {
+    const res = await jsonp(API_URL + '?action=debug');
+    if(res.error) { alert('API Error:\n\n' + res.error); return; }
+    alert(
+      'API Debug:\n\n' +
+      '✅ Sheet: "' + res.detectedSheet + '" (GID: ' + res.detectedGID + ')\n' +
+      'Rows: ' + ((res.allSheets||[]).find(s=>s.name===res.detectedSheet)||{}).rows + '\n\n' +
+      'Headers: ' + (res.headers||[]).join(', ') + '\n\n' +
+      'Sample row: ' + (res.sampleRow||[]).join(', ')
+    );
+  } catch(err) {
+    alert('Debug failed: ' + err.message + '\n\nCheck:\n1. Apps Script deployed as Web App\n2. Access set to "Anyone"\n3. URL is correct');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  DEMO DATA (fallback only)
+// ══════════════════════════════════════════════════════════
+function calcStats(rows){
+  const bs = {};
+  rows.forEach(r => { const s = r['Status']; bs[s] = (bs[s]||0)+1; });
+  return { total:rows.length, selected:bs['Selected']||0, onHold:bs['On Hold']||0, notSelected:bs['Not Selected']||0, joined:bs['Selected']||0, pending:bs['On Hold']||0, rejected:bs['Not Selected']||0 };
+}
+
+function loadDemo(){
+  const emps  = ['Vishal More','Vaishnavi','Atharva Rahul Jadhav'];
+  const poss  = ['Education Counselor','Business Development','HR Executive'];
+  const stats = ['Selected','Selected','On Hold','Not Selected','On Hold'];
+  const cands = ['Arun Kumar','Deepika Nair','Sanjay Gupta','Meena Pillai','Pooja Shah','Rajesh Iyer'];
+  const now   = new Date();
+  allRows = Array.from({length:6}, (_,i) => {
+    const d  = new Date(now - Math.random()*30*86400000);
+    const st = stats[Math.floor(Math.random()*stats.length)];
+    return {
+      'Timestamp':           d.toISOString(),
+      'Employee Name':       emps[i%emps.length],
+      'Candidate Full Name': cands[i%cands.length],
+      'Position Referred For': poss[i%poss.length],
+      'Status':              st,
+      'Refferal Amount':     st==='Selected' ? '1000' : '0'
+    };
+  });
+  populateFilters({
+    employees: [...new Set(allRows.map(r => r['Employee Name']))],
+    positions: [...new Set(allRows.map(r => r['Position Referred For']))]
+  });
+  renderKPIs(calcStats(allRows));
+  computeEarnings(allRows);
+}
+
+function demofilt(){
+  const f = getFilters();
+  let rows = [...allRows];
+  if(f.manager) rows = rows.filter(r => r['Employee Name'].toLowerCase().includes(f.manager.toLowerCase()));
+  if(f.process) rows = rows.filter(r => r['Position Referred For'].toLowerCase().includes(f.process.toLowerCase()));
+  if(f.status)  rows = rows.filter(r => r['Status'].toLowerCase() === f.status.toLowerCase());
+  renderKPIs(calcStats(rows));
+  computeEarnings(rows);
+  hideL();
+  showToast('Filters applied (demo)');
+}
+</script>
+</body>
+</html>
